@@ -39,12 +39,14 @@ jobs:
 
       - name: Setup keystore
         run: |
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+          KEYSTORE_B64="${{ secrets.KEYSTORE_BASE64 }}"
+          if [ -n "$KEYSTORE_B64" ]; then
             echo "✅ Using existing keystore"
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+            echo "$KEYSTORE_B64" | base64 -d > keystore.jks
             echo "KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS_VAL=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASS=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEYSTORE_IS_NEW=false" >> $GITHUB_ENV
           else
             echo "⚠️ Generating new keystore..."
             keytool -genkey -v \
@@ -57,11 +59,12 @@ jobs:
             echo "KEYSTORE_PASS=mytelegram123" >> $GITHUB_ENV
             echo "KEY_ALIAS_VAL=mytelegram" >> $GITHUB_ENV
             echo "KEY_PASS=mytelegram123" >> $GITHUB_ENV
+            echo "KEYSTORE_IS_NEW=true" >> $GITHUB_ENV
             base64 keystore.jks > keystore_base64.txt
           fi
 
       - name: Upload keystore (first time only)
-        if: ${{ !secrets.KEYSTORE_BASE64 }}
+        if: env.KEYSTORE_IS_NEW == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: SAVE-THIS-keystore
@@ -75,7 +78,6 @@ jobs:
           pip install Pillow -q
           python3 - << 'EOF'
           from PIL import Image
-          import os
 
           src = "icons/ic_launcher.png"
           img = Image.open(src).convert("RGBA")
@@ -124,4 +126,3 @@ jobs:
           APK=$(find TMessagesProj/build/outputs/apk/afat/release/ -name "*.apk" | head -1)
           echo "✅ Build #${{ github.run_number }} done!"
           echo "📏 Size: $(du -sh $APK | cut -f1)"
-          
