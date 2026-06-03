@@ -94,7 +94,6 @@ jobs:
           for folder, size in sizes.items():
               resized = img.resize((size, size), Image.LANCZOS)
               resized.save(f"{base}/{folder}/ic_launcher.png", "PNG")
-              resized.save(f"{base}/{folder}/ic_launcher_round.png", "PNG")
               print(f"✅ {folder}: {size}x{size}")
           EOF
 
