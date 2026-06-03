@@ -1,0 +1,120 @@
+name: Build Custom Telegram
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: |
+          echo "y" | sdkmanager "ndk;21.4.7075529"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> $GITHUB_ENV
+
+      - name: Write API credentials
+        run: |
+          sed -i "s/public static int APP_ID = .*/public static int APP_ID = ${{ secrets.TELEGRAM_API_ID }};/" \
+            TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+          sed -i 's/public static String APP_HASH = .*/public static String APP_HASH = "${{ secrets.TELEGRAM_API_HASH }}";/' \
+            TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+
+      - name: Setup keystore (auto-generate if not exists)
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "✅ Using existing keystore"
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+            echo "KEYSTORE_PATH=${{ github.workspace }}/keystore.jks" >> $GITHUB_ENV
+            echo "KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_ALIAS_VAL=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+            echo "KEY_PASS=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          else
+            echo "⚠️  No keystore found — generating automatically..."
+            keytool -genkey -v \
+              -keystore keystore.jks \
+              -alias mytelegram \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass mytelegram123 \
+              -keypass mytelegram123 \
+              -dname "CN=MyTelegram,O=Personal,C=IR"
+            echo "KEYSTORE_PATH=${{ github.workspace }}/keystore.jks" >> $GITHUB_ENV
+            echo "KEYSTORE_PASS=mytelegram123" >> $GITHUB_ENV
+            echo "KEY_ALIAS_VAL=mytelegram" >> $GITHUB_ENV
+            echo "KEY_PASS=mytelegram123" >> $GITHUB_ENV
+            base64 keystore.jks > keystore_base64.txt
+            echo ""
+            echo "════════════════════════════════════════"
+            echo "📋 IMPORTANT — Add these secrets to your repo:"
+            echo "   KEYSTORE_BASE64  = content of keystore-files artifact"
+            echo "   KEYSTORE_PASSWORD = mytelegram123"
+            echo "   KEY_ALIAS         = mytelegram"
+            echo "   KEY_PASSWORD      = mytelegram123"
+            echo "════════════════════════════════════════"
+          fi
+
+      - name: Upload keystore (only when auto-generated)
+        if: ${{ !secrets.KEYSTORE_BASE64 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAVE-THIS-keystore
+          path: |
+            keystore.jks
+            keystore_base64.txt
+          retention-days: 5
+
+      - name: Apply all customizations
+        run: python3 apply_changes.py
+
+      - name: Copy custom icons
+        run: |
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp icons/${density}/ic_launcher.png \
+              TMessagesProj/src/main/res/mipmap-${density}/ic_launcher.png
+            cp icons/${density}/ic_launcher_round.png \
+              TMessagesProj/src/main/res/mipmap-${density}/ic_launcher_round.png
+          done
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: |
+          ./gradlew assembleAfatRelease \
+            -Pandroid.injected.signing.store.file=${{ env.KEYSTORE_PATH }} \
+            -Pandroid.injected.signing.store.password=${{ env.KEYSTORE_PASS }} \
+            -Pandroid.injected.signing.key.alias=${{ env.KEY_ALIAS_VAL }} \
+            -Pandroid.injected.signing.key.password=${{ env.KEY_PASS }}
+        env:
+          JAVA_OPTS: "-Xmx4g"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyTelegram-arm64-${{ github.run_number }}
+          path: TMessagesProj/build/outputs/apk/afat/release/*.apk
+          retention-days: 30
+
+      - name: Done
+        run: |
+          APK=$(find TMessagesProj/build/outputs/apk/afat/release/ -name "*.apk" | head -1)
+          echo "✅ Build #${{ github.run_number }} done!"
+          echo "📏 Size: $(du -sh $APK | cut -f1)"
+          
