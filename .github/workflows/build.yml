@@ -37,17 +37,16 @@ jobs:
           sed -i 's/public static String APP_HASH = .*/public static String APP_HASH = "${{ secrets.TELEGRAM_API_HASH }}";/' \
             TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
 
-      - name: Setup keystore (auto-generate if not exists)
+      - name: Setup keystore
         run: |
           if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
             echo "✅ Using existing keystore"
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
-            echo "KEYSTORE_PATH=${{ github.workspace }}/keystore.jks" >> $GITHUB_ENV
             echo "KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS_VAL=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASS=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
           else
-            echo "⚠️  No keystore found — generating automatically..."
+            echo "⚠️ Generating new keystore..."
             keytool -genkey -v \
               -keystore keystore.jks \
               -alias mytelegram \
@@ -55,22 +54,13 @@ jobs:
               -storepass mytelegram123 \
               -keypass mytelegram123 \
               -dname "CN=MyTelegram,O=Personal,C=IR"
-            echo "KEYSTORE_PATH=${{ github.workspace }}/keystore.jks" >> $GITHUB_ENV
             echo "KEYSTORE_PASS=mytelegram123" >> $GITHUB_ENV
             echo "KEY_ALIAS_VAL=mytelegram" >> $GITHUB_ENV
             echo "KEY_PASS=mytelegram123" >> $GITHUB_ENV
             base64 keystore.jks > keystore_base64.txt
-            echo ""
-            echo "════════════════════════════════════════"
-            echo "📋 IMPORTANT — Add these secrets to your repo:"
-            echo "   KEYSTORE_BASE64  = content of keystore-files artifact"
-            echo "   KEYSTORE_PASSWORD = mytelegram123"
-            echo "   KEY_ALIAS         = mytelegram"
-            echo "   KEY_PASSWORD      = mytelegram123"
-            echo "════════════════════════════════════════"
           fi
 
-      - name: Upload keystore (only when auto-generated)
+      - name: Upload keystore (first time only)
         if: ${{ !secrets.KEYSTORE_BASE64 }}
         uses: actions/upload-artifact@v4
         with:
@@ -80,17 +70,34 @@ jobs:
             keystore_base64.txt
           retention-days: 5
 
+      - name: Resize and copy icon
+        run: |
+          pip install Pillow -q
+          python3 - << 'EOF'
+          from PIL import Image
+          import os
+
+          src = "icons/ic_launcher.png"
+          img = Image.open(src).convert("RGBA")
+
+          sizes = {
+              "mipmap-mdpi":    48,
+              "mipmap-hdpi":    72,
+              "mipmap-xhdpi":   96,
+              "mipmap-xxhdpi":  144,
+              "mipmap-xxxhdpi": 192,
+          }
+
+          base = "TMessagesProj/src/main/res"
+          for folder, size in sizes.items():
+              resized = img.resize((size, size), Image.LANCZOS)
+              resized.save(f"{base}/{folder}/ic_launcher.png", "PNG")
+              resized.save(f"{base}/{folder}/ic_launcher_round.png", "PNG")
+              print(f"✅ {folder}: {size}x{size}")
+          EOF
+
       - name: Apply all customizations
         run: python3 apply_changes.py
-
-      - name: Copy custom icons
-        run: |
-          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            cp icons/${density}/ic_launcher.png \
-              TMessagesProj/src/main/res/mipmap-${density}/ic_launcher.png
-            cp icons/${density}/ic_launcher_round.png \
-              TMessagesProj/src/main/res/mipmap-${density}/ic_launcher_round.png
-          done
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -98,7 +105,7 @@ jobs:
       - name: Build Release APK
         run: |
           ./gradlew assembleAfatRelease \
-            -Pandroid.injected.signing.store.file=${{ env.KEYSTORE_PATH }} \
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/keystore.jks \
             -Pandroid.injected.signing.store.password=${{ env.KEYSTORE_PASS }} \
             -Pandroid.injected.signing.key.alias=${{ env.KEY_ALIAS_VAL }} \
             -Pandroid.injected.signing.key.password=${{ env.KEY_PASS }}
