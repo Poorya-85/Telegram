@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import json
 
 def read_file(path):
     with open(path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -44,7 +45,6 @@ print("\n" + "="*50)
 print("1. Package Name")
 print("="*50)
 
-# در نسخه جدید تلگرام، APP_PACKAGE توی gradle.properties هست
 gradle_props = os.path.join(BASE, "gradle.properties")
 if os.path.exists(gradle_props):
     regex_replace_in_file(
@@ -53,7 +53,6 @@ if os.path.exists(gradle_props):
         'APP_PACKAGE=org.telegram.messenger.custom'
     )
 else:
-    # اگه gradle.properties نبود، توی build.gradle دنبال بگرد
     build_gradle = os.path.join(BASE, "TMessagesProj/build.gradle")
     regex_replace_in_file(
         build_gradle,
@@ -65,7 +64,6 @@ print("\n" + "="*50)
 print("2. arm64-v8a Only")
 print("="*50)
 
-# توی هر دو build.gradle تغییر بده
 for gradle_path in [
     "TMessagesProj/build.gradle",
     "TMessagesProj_AppHockeyApp/build.gradle"
@@ -242,6 +240,33 @@ if os.path.exists(media_data):
         r'\1        return null;\n',
         required=False
     )
+
+print("\n" + "="*50)
+print("10. Fix google-services.json for custom package")
+print("="*50)
+
+for gs_path in [
+    "TMessagesProj/google-services.json",
+    "TMessagesProj_App/google-services.json",
+]:
+    full_gs = os.path.join(BASE, gs_path)
+    if os.path.exists(full_gs):
+        with open(full_gs, 'r') as f:
+            gs = json.load(f)
+        changed = False
+        for client in gs.get('client', []):
+            pkg = client.get('client_info', {}).get('android_client_info', {}).get('package_name', '')
+            if pkg == 'org.telegram.messenger':
+                client['client_info']['android_client_info']['package_name'] = 'org.telegram.messenger.custom'
+                changed = True
+        if changed:
+            with open(full_gs, 'w') as f:
+                json.dump(gs, f, indent=2)
+            print(f"✅ Updated {gs_path}")
+        else:
+            print(f"⚠️  No matching package found in {gs_path}")
+    else:
+        print(f"⚠️  {gs_path} not found - skipping")
 
 print("\n" + "="*50)
 print("✅ All patches applied!")
