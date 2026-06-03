@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-این اسکریپت تمام تغییرات رو روی سورس تلگرام اعمال میکنه.
-داخل GitHub Actions اجرا میشه.
-"""
-
 import os
 import re
 import sys
@@ -21,7 +16,6 @@ def replace_in_file(path, old, new, required=True):
     if old not in content:
         if required:
             print(f"❌ ERROR: Could not find pattern in {path}")
-            print(f"   Pattern: {old[:80]}...")
             sys.exit(1)
         else:
             print(f"⚠️  SKIP: Pattern not found in {path} (optional)")
@@ -50,30 +44,40 @@ print("\n" + "="*50)
 print("1. Package Name")
 print("="*50)
 
-# build.gradle
-build_gradle = os.path.join(BASE, "TMessagesProj/build.gradle")
-regex_replace_in_file(
-    build_gradle,
-    r'applicationId\s+"org\.telegram\.messenger"',
-    'applicationId "org.telegram.messenger.custom"'
-)
+# در نسخه جدید تلگرام، APP_PACKAGE توی gradle.properties هست
+gradle_props = os.path.join(BASE, "gradle.properties")
+if os.path.exists(gradle_props):
+    regex_replace_in_file(
+        gradle_props,
+        r'APP_PACKAGE\s*=\s*org\.telegram\.messenger',
+        'APP_PACKAGE=org.telegram.messenger.custom'
+    )
+else:
+    # اگه gradle.properties نبود، توی build.gradle دنبال بگرد
+    build_gradle = os.path.join(BASE, "TMessagesProj/build.gradle")
+    regex_replace_in_file(
+        build_gradle,
+        r'applicationId\s*=?\s*["\']org\.telegram\.messenger["\']',
+        'applicationId = "org.telegram.messenger.custom"'
+    )
 
 print("\n" + "="*50)
 print("2. arm64-v8a Only")
 print("="*50)
 
-regex_replace_in_file(
-    build_gradle,
-    r'abiFilters\s+"armeabi-v7a",\s*"x86",\s*"arm64-v8a",\s*"x86_64"',
-    'abiFilters "arm64-v8a"',
-    required=False
-)
-regex_replace_in_file(
-    build_gradle,
-    r'abiFilters\s+"armeabi-v7a",\s*"arm64-v8a"',
-    'abiFilters "arm64-v8a"',
-    required=False
-)
+# توی هر دو build.gradle تغییر بده
+for gradle_path in [
+    "TMessagesProj/build.gradle",
+    "TMessagesProj_AppHockeyApp/build.gradle"
+]:
+    full_path = os.path.join(BASE, gradle_path)
+    if os.path.exists(full_path):
+        regex_replace_in_file(
+            full_path,
+            r'abiFilters\s+"armeabi-v7a",\s*"arm64-v8a",\s*"x86",\s*"x86_64"',
+            'abiFilters "arm64-v8a"',
+            required=False
+        )
 
 print("\n" + "="*50)
 print("3. Persian Translation Target")
@@ -84,13 +88,7 @@ translate_controller = os.path.join(BASE,
 if os.path.exists(translate_controller):
     regex_replace_in_file(
         translate_controller,
-        r'(String\s+toLang\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
-        r'\1"fa"',
-        required=False
-    )
-    regex_replace_in_file(
-        translate_controller,
-        r'(String\s+language\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
+        r'(String\s+\w*[Ll]ang\w*\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
         r'\1"fa"',
         required=False
     )
@@ -106,8 +104,6 @@ profile_activity = os.path.join(BASE,
 
 if os.path.exists(profile_activity):
     content = read_file(profile_activity)
-    
-    # اضافه کردن constant برای show_id
     if "SHOW_ID_MENU_ITEM" not in content:
         regex_replace_in_file(
             profile_activity,
@@ -115,67 +111,49 @@ if os.path.exists(profile_activity):
             r'\1\n    private static final int SHOW_ID_MENU_ITEM = 9999;',
             required=False
         )
-    
-    # اضافه کردن آیتم به منو - دنبال add(edit) یا addItem میگردیم
-    show_id_menu_code = '''
-            otherItem.addSubItem(SHOW_ID_MENU_ITEM, "Show ID");'''
-    
-    # پیدا کردن جای مناسب برای اضافه کردن
-    regex_replace_in_file(
-        profile_activity,
-        r'(otherItem\.addSubItem\(edit,)',
-        show_id_menu_code + r'\n            \1',
-        required=False
-    )
-    
-    # هندل کردن کلیک
-    show_id_handler = '''} else if (id == SHOW_ID_MENU_ITEM) {
+        regex_replace_in_file(
+            profile_activity,
+            r'(otherItem\.addSubItem\(edit,)',
+            r'otherItem.addSubItem(SHOW_ID_MENU_ITEM, "Show ID");\n            \1',
+            required=False
+        )
+        show_id_handler = '''} else if (id == SHOW_ID_MENU_ITEM) {
                 long uid = userId;
                 String createdDate = estimateAccountCreationDate(uid);
-                androidx.appcompat.app.AlertDialog.Builder builder = 
+                androidx.appcompat.app.AlertDialog.Builder builder =
                     new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());
                 builder.setTitle("User ID");
                 builder.setMessage("ID: " + uid + "\\n\\nCreated approximately:\\n" + createdDate);
                 builder.setPositiveButton("Copy ID", (dialog, which) -> {
-                    android.content.ClipboardManager clipboard = 
+                    android.content.ClipboardManager clipboard =
                         (android.content.ClipboardManager) getParentActivity()
                         .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-                    android.content.ClipData clip = 
+                    android.content.ClipData clip =
                         android.content.ClipData.newPlainText("Telegram ID", String.valueOf(uid));
                     clipboard.setPrimaryClip(clip);
-                    android.widget.Toast.makeText(getParentActivity(), 
+                    android.widget.Toast.makeText(getParentActivity(),
                         "ID copied!", android.widget.Toast.LENGTH_SHORT).show();
                 });
                 builder.setNegativeButton("Close", null);
                 showDialog(builder.create());'''
-
-    regex_replace_in_file(
-        profile_activity,
-        r'(if \(id == edit\) \{)',
-        show_id_handler + r'\n            } else \1',
-        required=False
-    )
-    
-    # اضافه کردن متد تخمین تاریخ ساخت اکانت
-    estimate_method = '''
+        regex_replace_in_file(
+            profile_activity,
+            r'(} else if \(id == edit\) \{)',
+            show_id_handler + r'\n            \1',
+            required=False
+        )
+        estimate_method = '''
     private String estimateAccountCreationDate(long userId) {
         long[][] milestones = {
-            {1L,           2013, 1},
-            {100000L,      2013, 6},
-            {1000000L,     2014, 1},
-            {10000000L,    2014, 9},
-            {100000000L,   2016, 3},
-            {500000000L,   2019, 1},
-            {1000000000L,  2020, 6},
-            {1500000000L,  2021, 7},
-            {2000000000L,  2022, 6},
-            {5000000000L,  2023, 6},
-            {7000000000L,  2024, 1},
+            {1L, 2013, 1}, {100000L, 2013, 6}, {1000000L, 2014, 1},
+            {10000000L, 2014, 9}, {100000000L, 2016, 3}, {500000000L, 2019, 1},
+            {1000000000L, 2020, 6}, {1500000000L, 2021, 7}, {2000000000L, 2022, 6},
+            {5000000000L, 2023, 6}, {7000000000L, 2024, 1},
         };
         int year = 2024, month = 1;
         for (int i = milestones.length - 1; i >= 0; i--) {
             if (userId >= milestones[i][0]) {
-                year  = (int) milestones[i][1];
+                year = (int) milestones[i][1];
                 month = (int) milestones[i][2];
                 break;
             }
@@ -185,13 +163,11 @@ if os.path.exists(profile_activity):
         return months[month - 1] + " " + year;
     }
 '''
-    # اضافه کردن قبل از آخرین }
-    if "estimateAccountCreationDate" not in read_file(profile_activity):
         content = read_file(profile_activity)
         last_brace = content.rfind('}')
         content = content[:last_brace] + estimate_method + content[last_brace:]
         write_file(profile_activity, content)
-        print(f"✅ Added estimateAccountCreationDate to ProfileActivity.java")
+        print(f"✅ Added estimateAccountCreationDate")
 
 print("\n" + "="*50)
 print("5. Message Timestamps with Seconds")
@@ -202,14 +178,14 @@ locale_controller = os.path.join(BASE,
 if os.path.exists(locale_controller):
     regex_replace_in_file(
         locale_controller,
-        r'formatterDay\s*=\s*FastDateFormat\.getInstance\("HH:mm"',
-        'formatterDay = FastDateFormat.getInstance("HH:mm:ss"',
+        r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"HH:mm"',
+        r'\1"HH:mm:ss"',
         required=False
     )
     regex_replace_in_file(
         locale_controller,
-        r'formatterDay\s*=\s*FastDateFormat\.getInstance\("h:mm a"',
-        'formatterDay = FastDateFormat.getInstance("h:mm:ss a"',
+        r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"h:mm a"',
+        r'\1"h:mm:ss a"',
         required=False
     )
 
@@ -223,9 +199,7 @@ if os.path.exists(dialogs_activity):
     regex_replace_in_file(
         dialogs_activity,
         r'(for \(int a = 0; a < filters\.size\(\); a\+\+\) \{)',
-        r'''\1
-                MessagesController.DialogFilter _filterCheck = filters.get(a);
-                if (_filterCheck.id == 0) continue; // hide All Chats''',
+        r'\1\n                if (filters.get(a).id == 0) continue;',
         required=False
     )
 
@@ -238,14 +212,8 @@ chat_activity = os.path.join(BASE,
 if os.path.exists(chat_activity):
     regex_replace_in_file(
         chat_activity,
-        r'(private boolean canJumpToNextChannel\(\) \{[\s\S]*?return\s+)true',
+        r'(private boolean canJumpToNextChannel\(\) \{[^}]*return\s+)true',
         r'\1false',
-        required=False
-    )
-    regex_replace_in_file(
-        chat_activity,
-        r'(canJumpToNextChannel\(\))',
-        r'(false && \1)',
         required=False
     )
 
@@ -262,12 +230,6 @@ if os.path.exists(media_data):
         r'\1200',
         required=False
     )
-    regex_replace_in_file(
-        media_data,
-        r'MAX_STICKER_SET_SIZE\s*=\s*\d+',
-        'MAX_STICKER_SET_SIZE = 200',
-        required=False
-    )
 
 print("\n" + "="*50)
 print("9. Disable Greeting Sticker")
@@ -276,11 +238,11 @@ print("="*50)
 if os.path.exists(media_data):
     regex_replace_in_file(
         media_data,
-        r'(public TLRPC\.Document getGreetingSticker\(\) \{)',
-        r'\1\n        return null; // disabled',
+        r'(public TLRPC\.Document getGreetingSticker\(\) \{\n)',
+        r'\1        return null;\n',
         required=False
     )
 
 print("\n" + "="*50)
-print("✅ All patches applied successfully!")
+print("✅ All patches applied!")
 print("="*50 + "\n")
