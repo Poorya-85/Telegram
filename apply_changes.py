@@ -248,29 +248,48 @@ print("\n" + "="*50)
 print("10. Fix google-services.json for custom package")
 print("="*50)
 
-gs_files = glob.glob(os.path.join(BASE, "*/google-services.json"))
-if not gs_files:
-    print("⚠️  No google-services.json found")
-else:
-    for full_gs in gs_files:
-        gs_path = os.path.relpath(full_gs, BASE)
-        try:
-            with open(full_gs, 'r') as f:
-                gs = json.load(f)
-            changed = False
-            for client in gs.get('client', []):
-                pkg = client.get('client_info', {}).get('android_client_info', {}).get('package_name', '')
-                if pkg == 'org.telegram.messenger':
-                    client['client_info']['android_client_info']['package_name'] = 'org.telegram.messenger.custom'
-                    changed = True
-            if changed:
-                with open(full_gs, 'w') as f:
-                    json.dump(gs, f, indent=2)
-                print(f"✅ Updated {gs_path}")
-            else:
-                print(f"⚠️  No matching package in {gs_path}")
-        except Exception as e:
-            print(f"⚠️  Could not parse {gs_path}: {e}")
+for full_gs in glob.glob(os.path.join(BASE, "*/google-services.json")):
+    gs_path = os.path.relpath(full_gs, BASE)
+    try:
+        with open(full_gs, 'r') as f:
+            gs = json.load(f)
+        changed = False
+        for client in gs.get('client', []):
+            pkg = client.get('client_info', {}).get('android_client_info', {}).get('package_name', '')
+            if pkg == 'org.telegram.messenger':
+                client['client_info']['android_client_info']['package_name'] = 'org.telegram.messenger.custom'
+                changed = True
+        if changed:
+            with open(full_gs, 'w') as f:
+                json.dump(gs, f, indent=2)
+            print(f"✅ Updated {gs_path}")
+        else:
+            print(f"⚠️  No matching package in {gs_path}")
+    except Exception as e:
+        print(f"⚠️  Could not parse {gs_path}: {e}")
+
+print("\n" + "="*50)
+print("11. Fix agconnect-services.json for Huawei")
+print("="*50)
+
+for full_agc in glob.glob(os.path.join(BASE, "*/agconnect-services.json")):
+    agc_path = os.path.relpath(full_agc, BASE)
+    try:
+        with open(full_agc, 'r') as f:
+            agc = json.load(f)
+        changed = False
+        client_pkg = agc.get('client', {}).get('package_name', '')
+        if client_pkg == 'org.telegram.messenger':
+            agc['client']['package_name'] = 'org.telegram.messenger.custom'
+            changed = True
+        if changed:
+            with open(full_agc, 'w') as f:
+                json.dump(agc, f, indent=2)
+            print(f"✅ Updated {agc_path}")
+        else:
+            print(f"⚠️  No matching package in {agc_path}")
+    except Exception as e:
+        print(f"⚠️  Could not parse {agc_path}: {e}")
 
 print("\n" + "="*50)
 print("✅ All patches applied!")
