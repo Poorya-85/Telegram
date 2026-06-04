@@ -97,6 +97,28 @@ jobs:
               print(f"✅ {folder}: {size}x{size}")
           EOF
 
+- name: Debug source files
+        run: |
+          echo "=== ProfileActivity menu items ==="
+          grep -n "edit\|otherItem\|addSubItem\|MenuId\|menu_id" \
+            TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java | head -40
+
+          echo "=== TranslateController language ==="
+          grep -n "language\|locale\|toLang\|getLanguage\|Locale" \
+            TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java | head -40
+
+          echo "=== DialogsActivity filters loop ==="
+          grep -n "filters\|for.*size\|DialogFilter" \
+            TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java | head -40
+
+          echo "=== ChatActivity jump ==="
+          grep -n "jump\|Jump\|nextChannel\|NextChannel" \
+            TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java | head -20
+
+          echo "=== MediaDataController sticker ==="
+          grep -n "sticker\|MAX_STICKER\|greeting\|Greeting" \
+            TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java | head -40          
+
       - name: Apply all customizations
         run: python3 apply_changes.py
 
