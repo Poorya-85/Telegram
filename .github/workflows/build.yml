@@ -94,30 +94,21 @@ jobs:
           for folder, size in sizes.items():
               resized = img.resize((size, size), Image.LANCZOS)
               resized.save(f"{base}/{folder}/ic_launcher.png", "PNG")
-              print(f"✅ {folder}: {size}x{size}")
+              print(f"OK {folder}: {size}x{size}")
           EOF
 
-- name: Debug source files
+      - name: Debug source files
         run: |
           echo "=== ProfileActivity menu items ==="
-          grep -n "edit\|otherItem\|addSubItem\|MenuId\|menu_id" \
-            TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java | head -40
-
+          grep -n "edit\|otherItem\|addSubItem\|MenuId\|menu_id" TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java | head -40
           echo "=== TranslateController language ==="
-          grep -n "language\|locale\|toLang\|getLanguage\|Locale" \
-            TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java | head -40
-
+          grep -n "language\|locale\|toLang\|getLanguage\|Locale" TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java | head -40
           echo "=== DialogsActivity filters loop ==="
-          grep -n "filters\|for.*size\|DialogFilter" \
-            TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java | head -40
-
+          grep -n "filters\|for.*size\|DialogFilter" TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java | head -40
           echo "=== ChatActivity jump ==="
-          grep -n "jump\|Jump\|nextChannel\|NextChannel" \
-            TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java | head -20
-
+          grep -n "jump\|Jump\|nextChannel\|NextChannel" TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java | head -20
           echo "=== MediaDataController sticker ==="
-          grep -n "sticker\|MAX_STICKER\|greeting\|Greeting" \
-            TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java | head -40          
+          grep -n "sticker\|MAX_STICKER\|greeting\|Greeting" TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java | head -40
 
       - name: Apply all customizations
         run: python3 apply_changes.py
@@ -146,9 +137,9 @@ jobs:
         run: |
           APK=$(find TMessagesProj_App/build/outputs/apk/afat/release/ -name "*.apk" 2>/dev/null | head -1)
           if [ -n "$APK" ]; then
-            echo "✅ Build #${{ github.run_number }} done!"
-            echo "📏 Size: $(du -sh $APK | cut -f1)"
+            echo "Build #${{ github.run_number }} done!"
+            echo "Size: $(du -sh $APK | cut -f1)"
           else
-            echo "⚠️ APK not found, searching everywhere..."
+            echo "APK not found, searching..."
             find . -name "*.apk" 2>/dev/null
           fi
