@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import json
+import glob
 
 def read_file(path):
     with open(path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -51,20 +52,13 @@ print("\n" + "="*50)
 print("2. arm64-v8a Only")
 print("="*50)
 
-for gradle_path in [
-    "TMessagesProj/build.gradle",
-    "TMessagesProj_App/build.gradle",
-    "TMessagesProj_AppHockeyApp/build.gradle",
-    "TMessagesProj_AppHuawei/build.gradle",
-]:
-    full_path = os.path.join(BASE, gradle_path)
-    if os.path.exists(full_path):
-        regex_replace_in_file(
-            full_path,
-            r'abiFilters\s+"armeabi-v7a",\s*"arm64-v8a",\s*"x86",\s*"x86_64"',
-            'abiFilters "arm64-v8a"',
-            required=False
-        )
+for gradle_path in glob.glob(os.path.join(BASE, "*/build.gradle")):
+    regex_replace_in_file(
+        gradle_path,
+        r'abiFilters\s+"armeabi-v7a",\s*"arm64-v8a",\s*"x86",\s*"x86_64"',
+        'abiFilters "arm64-v8a"',
+        required=False
+    )
 
 print("\n" + "="*50)
 print("3. Persian Translation Target")
@@ -73,20 +67,15 @@ print("="*50)
 translate_controller = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java")
 if os.path.exists(translate_controller):
-    # چند pattern مختلف برای نسخه‌های مختلف
-    patterns = [
-        r'(String\s+\w*[Ll]ang\w*\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
-        r'(toLang\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
-        r'Locale\.getDefault\(\)\.getLanguage\(\)',
-    ]
     found = False
-    for p in patterns:
+    for pattern, replacement in [
+        (r'(String\s+\w*[Ll]ang\w*\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)', r'\1"fa"'),
+        (r'(toLang\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)', r'\1"fa"'),
+        (r'Locale\.getDefault\(\)\.getLanguage\(\)', '"fa"'),
+    ]:
         content = read_file(translate_controller)
-        if re.search(p, content):
-            if 'Locale.getDefault' in p:
-                regex_replace_in_file(translate_controller, p, '"fa"', required=False)
-            else:
-                regex_replace_in_file(translate_controller, p, r'\1"fa"', required=False)
+        if re.search(pattern, content):
+            regex_replace_in_file(translate_controller, pattern, replacement, required=False)
             found = True
             break
     if not found:
@@ -198,11 +187,11 @@ print("="*50)
 dialogs_activity = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java")
 if os.path.exists(dialogs_activity):
-    patterns = [
+    found = False
+    for p in [
         r'(for \(int a = 0; a < filters\.size\(\); a\+\+\) \{)',
         r'(for \(int i = 0; i < filters\.size\(\); i\+\+\) \{)',
-    ]
-    for p in patterns:
+    ]:
         content = read_file(dialogs_activity)
         if re.search(p, content):
             regex_replace_in_file(
@@ -210,7 +199,10 @@ if os.path.exists(dialogs_activity):
                 r'\1\n                if (filters.get(a).id == 0) continue;',
                 required=False
             )
+            found = True
             break
+    if not found:
+        print("⚠️  Could not find filters loop - skipping")
 
 print("\n" + "="*50)
 print("7. Disable Jump to Next Channel")
@@ -256,17 +248,12 @@ print("\n" + "="*50)
 print("10. Fix google-services.json for custom package")
 print("="*50)
 
-# همه مسیرهای ممکن برای google-services.json
-gs_paths = [
-    "TMessagesProj/google-services.json",
-    "TMessagesProj_App/google-services.json",
-    "TMessagesProj_AppHockeyApp/google-services.json",
-    "TMessagesProj_AppHuawei/google-services.json",
-]
-
-for gs_path in gs_paths:
-    full_gs = os.path.join(BASE, gs_path)
-    if os.path.exists(full_gs):
+gs_files = glob.glob(os.path.join(BASE, "*/google-services.json"))
+if not gs_files:
+    print("⚠️  No google-services.json found")
+else:
+    for full_gs in gs_files:
+        gs_path = os.path.relpath(full_gs, BASE)
         try:
             with open(full_gs, 'r') as f:
                 gs = json.load(f)
@@ -284,8 +271,6 @@ for gs_path in gs_paths:
                 print(f"⚠️  No matching package in {gs_path}")
         except Exception as e:
             print(f"⚠️  Could not parse {gs_path}: {e}")
-    else:
-        print(f"⚠️  {gs_path} not found - skipping")
 
 print("\n" + "="*50)
 print("✅ All patches applied!")
