@@ -109,8 +109,7 @@ jobs:
             -Pandroid.injected.signing.store.file=${{ github.workspace }}/keystore.jks \
             -Pandroid.injected.signing.store.password=${{ env.KEYSTORE_PASS }} \
             -Pandroid.injected.signing.key.alias=${{ env.KEY_ALIAS_VAL }} \
-            -Pandroid.injected.signing.key.password=${{ env.KEY_PASS }} \
-            --exclude-task :TMessagesProj:processReleaseGoogleServices
+            -Pandroid.injected.signing.key.password=${{ env.KEY_PASS }}
         env:
           JAVA_OPTS: "-Xmx4g"
 
