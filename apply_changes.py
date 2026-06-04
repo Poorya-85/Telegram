@@ -13,19 +13,19 @@ def write_file(path, content):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(content)
 
-def regex_replace_in_file(path, pattern, replacement, required=True):
+def regex_replace_in_file(path, pattern, replacement, required=True, flags=0):
     content = read_file(path)
-    new_content, count = re.subn(pattern, replacement, content)
+    new_content, count = re.subn(pattern, replacement, content, flags=flags)
     if count == 0:
         if required:
-            print(f"❌ ERROR: Regex not matched in {path}")
+            print(f"ERROR: Regex not matched in {path}")
             print(f"   Pattern: {pattern[:80]}")
             sys.exit(1)
         else:
-            print(f"⚠️  SKIP: Regex not matched in {path} (optional)")
+            print(f"SKIP: Regex not matched in {path} (optional)")
             return
     write_file(path, new_content)
-    print(f"✅ Modified: {path} ({count} replacements)")
+    print(f"OK: Modified {path} ({count} replacements)")
 
 BASE = os.getcwd()
 
@@ -67,21 +67,22 @@ print("="*50)
 translate_controller = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java")
 if os.path.exists(translate_controller):
-    found = False
-    for pattern, replacement in [
-        (r'(String\s+\w*[Ll]ang\w*\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)', r'\1"fa"'),
-        (r'(toLang\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)', r'\1"fa"'),
-        (r'Locale\.getDefault\(\)\.getLanguage\(\)', '"fa"'),
-    ]:
-        content = read_file(translate_controller)
-        if re.search(pattern, content):
-            regex_replace_in_file(translate_controller, pattern, replacement, required=False)
-            found = True
-            break
-    if not found:
-        print("⚠️  Could not find translation language pattern - skipping")
+    # در نسخه جدید از pluralLangCode استفاده میکنه
+    regex_replace_in_file(
+        translate_controller,
+        r'LocaleController\.getInstance\(\)\.getCurrentLocaleInfo\(\)\.pluralLangCode',
+        '"fa"',
+        required=False
+    )
+    # fallback های دیگه
+    regex_replace_in_file(
+        translate_controller,
+        r'Resources\.getSystem\(\)\.getConfiguration\(\)\.locale\.getLanguage\(\)',
+        '"fa"',
+        required=False
+    )
 else:
-    print("⚠️  TranslateController.java not found - skipping")
+    print("SKIP: TranslateController.java not found")
 
 print("\n" + "="*50)
 print("4. Show ID in Profile")
@@ -93,43 +94,48 @@ profile_activity = os.path.join(BASE,
 if os.path.exists(profile_activity):
     content = read_file(profile_activity)
     if "SHOW_ID_MENU_ITEM" not in content:
+        # اضافه کردن constant بعد از آخرین edit_ constant
         regex_replace_in_file(
             profile_activity,
-            r'(private\s+static\s+final\s+int\s+edit\s*=\s*\d+;)',
-            r'\1\n    private static final int SHOW_ID_MENU_ITEM = 9999;',
+            r'(private final static int edit_avatar\s*=\s*\d+;)',
+            r'\1\n    private final static int show_id = 9999;',
             required=False
         )
+        # اضافه کردن به منوی otherItem - بعد از اولین showSubItem
         regex_replace_in_file(
             profile_activity,
-            r'(otherItem\.addSubItem\(edit,)',
-            r'otherItem.addSubItem(SHOW_ID_MENU_ITEM, "Show ID");\n            \1',
+            r'(otherItem\.showSubItem\(gallery_menu_save\);)',
+            r'\1\n                    otherItem.addSubItem(show_id, "Show ID");',
             required=False
         )
-        show_id_handler = '''} else if (id == SHOW_ID_MENU_ITEM) {
+        # هندل کردن کلیک - بعد از آخرین else if مربوط به edit
+        show_id_handler = '''} else if (id == show_id) {
                 long uid = userId;
                 String createdDate = estimateAccountCreationDate(uid);
                 androidx.appcompat.app.AlertDialog.Builder builder =
                     new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());
                 builder.setTitle("User ID");
-                builder.setMessage("ID: " + uid + "\\n\\nCreated approximately:\\n" + createdDate);
+                builder.setMessage("ID: " + uid + "\\n\\nAccount created approximately:\\n" + createdDate);
                 builder.setPositiveButton("Copy ID", (dialog, which) -> {
                     android.content.ClipboardManager clipboard =
                         (android.content.ClipboardManager) getParentActivity()
                         .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
                     android.content.ClipData clip =
-                        android.content.ClipData.newPlainText("Telegram ID", String.valueOf(uid));
+                        android.content.ClipData.newPlainText("ID", String.valueOf(uid));
                     clipboard.setPrimaryClip(clip);
                     android.widget.Toast.makeText(getParentActivity(),
                         "ID copied!", android.widget.Toast.LENGTH_SHORT).show();
                 });
                 builder.setNegativeButton("Close", null);
                 showDialog(builder.create());'''
+
         regex_replace_in_file(
             profile_activity,
-            r'(} else if \(id == edit\) \{)',
+            r'(} else if \(id == edit_avatar\) \{)',
             show_id_handler + r'\n            \1',
             required=False
         )
+
         estimate_method = '''
     private String estimateAccountCreationDate(long userId) {
         long[][] milestones = {
@@ -155,9 +161,9 @@ if os.path.exists(profile_activity):
         last_brace = content.rfind('}')
         content = content[:last_brace] + estimate_method + content[last_brace:]
         write_file(profile_activity, content)
-        print(f"✅ Added estimateAccountCreationDate")
+        print("OK: Added Show ID and estimateAccountCreationDate")
     else:
-        print("⚠️  Show ID already added - skipping")
+        print("SKIP: Show ID already added")
 
 print("\n" + "="*50)
 print("5. Message Timestamps with Seconds")
@@ -166,19 +172,18 @@ print("="*50)
 locale_controller = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java")
 if os.path.exists(locale_controller):
-    found = False
-    for pattern, replacement in [
-        (r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"HH:mm"', r'\1"HH:mm:ss"'),
-        (r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"h:mm a"', r'\1"h:mm:ss a"'),
-        (r'"HH:mm"', '"HH:mm:ss"'),
-    ]:
-        content = read_file(locale_controller)
-        if re.search(pattern, content):
-            regex_replace_in_file(locale_controller, pattern, replacement, required=False)
-            found = True
-            break
-    if not found:
-        print("⚠️  Could not find time format pattern - skipping")
+    regex_replace_in_file(
+        locale_controller,
+        r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"HH:mm"',
+        r'\1"HH:mm:ss"',
+        required=False
+    )
+    regex_replace_in_file(
+        locale_controller,
+        r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"h:mm a"',
+        r'\1"h:mm:ss a"',
+        required=False
+    )
 
 print("\n" + "="*50)
 print("6. Hide All Chats Tab")
@@ -187,22 +192,14 @@ print("="*50)
 dialogs_activity = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java")
 if os.path.exists(dialogs_activity):
-    found = False
-    for p in [
-        r'(for \(int a = 0; a < filters\.size\(\); a\+\+\) \{)',
-        r'(for \(int i = 0; i < filters\.size\(\); i\+\+\) \{)',
-    ]:
-        content = read_file(dialogs_activity)
-        if re.search(p, content):
-            regex_replace_in_file(
-                dialogs_activity, p,
-                r'\1\n                if (filters.get(a).id == 0) continue;',
-                required=False
-            )
-            found = True
-            break
-    if not found:
-        print("⚠️  Could not find filters loop - skipping")
+    # در نسخه جدید از getDialogFilters() استفاده میکنه
+    # All Chats تب اول با id=0 هست - وقتی position==0 باشه skip میکنیم
+    regex_replace_in_file(
+        dialogs_activity,
+        r'(ArrayList<MessagesController\.DialogFilter> dialogFilters = getMessagesController\(\)\.getDialogFilters\(\);)',
+        r'\1\n                    if (dialogFilters.size() > 0 && dialogFilters.get(0).id == 0) dialogFilters.remove(0);',
+        required=False
+    )
 
 print("\n" + "="*50)
 print("7. Disable Jump to Next Channel")
@@ -211,10 +208,11 @@ print("="*50)
 chat_activity = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java")
 if os.path.exists(chat_activity):
+    # nextChannels رو خالی نگه دار
     regex_replace_in_file(
         chat_activity,
-        r'(private boolean canJumpToNextChannel\(\) \{[^}]*return\s+)true',
-        r'\1false',
+        r'(public void setNextChannels\(ArrayList<TLRPC\.Chat> channels\) \{)\s*\n\s*nextChannels = channels;',
+        r'\1\n        nextChannels = null; // disabled',
         required=False
     )
 
@@ -225,10 +223,18 @@ print("="*50)
 media_data = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java")
 if os.path.exists(media_data):
+    # sticker sets limit
     regex_replace_in_file(
         media_data,
-        r'(stickers\.size\(\)\s*>=?\s*)120',
+        r'(stickerSets\[\d+\]\.size\(\)\s*>=?\s*)200',
         r'\1200',
+        required=False
+    )
+    # حداکثر تعداد sticker در یه set
+    regex_replace_in_file(
+        media_data,
+        r'\.size\(\)\s*<\s*200\b',
+        '.size() < 200',
         required=False
     )
 
@@ -237,27 +243,30 @@ print("9. Disable Greeting Sticker")
 print("="*50)
 
 if os.path.exists(media_data):
+    # greetingsSticker رو همیشه null نگه دار
     regex_replace_in_file(
         media_data,
-        r'(public TLRPC\.Document getGreetingSticker\(\) \{\n)',
-        r'\1        return null;\n',
+        r'(private TLRPC\.Document greetingsSticker;)',
+        r'\1 // greeting sticker disabled',
+        required=False
+    )
+    regex_replace_in_file(
+        media_data,
+        r'(greetingsSticker\s*=\s*)(?!null)',
+        r'\1null; // disabled // was: ',
         required=False
     )
 
 print("\n" + "="*50)
-print("10. Fix google-services.json (only App modules, not base)")
+print("10. Fix google-services.json (only App modules)")
 print("="*50)
 
-# فقط module هایی که _App دارن آپدیت میشن، نه TMessagesProj اصلی
 for full_gs in glob.glob(os.path.join(BASE, "*/google-services.json")):
     gs_path = os.path.relpath(full_gs, BASE)
     module_name = gs_path.split('/')[0]
-
-    # TMessagesProj اصلی رو skip کن
     if module_name == "TMessagesProj":
-        print(f"⏭️  Skipping base module: {gs_path}")
+        print(f"SKIP base module: {gs_path}")
         continue
-
     try:
         with open(full_gs, 'r') as f:
             gs = json.load(f)
@@ -270,11 +279,11 @@ for full_gs in glob.glob(os.path.join(BASE, "*/google-services.json")):
         if changed:
             with open(full_gs, 'w') as f:
                 json.dump(gs, f, indent=2)
-            print(f"✅ Updated {gs_path}")
+            print(f"OK: Updated {gs_path}")
         else:
-            print(f"⚠️  No matching package in {gs_path}")
+            print(f"SKIP: No matching package in {gs_path}")
     except Exception as e:
-        print(f"⚠️  Could not parse {gs_path}: {e}")
+        print(f"SKIP: Could not parse {gs_path}: {e}")
 
 print("\n" + "="*50)
 print("11. Fix agconnect-services.json for Huawei")
@@ -284,7 +293,7 @@ for full_agc in glob.glob(os.path.join(BASE, "*/agconnect-services.json")):
     agc_path = os.path.relpath(full_agc, BASE)
     module_name = agc_path.split('/')[0]
     if module_name == "TMessagesProj":
-        print(f"⏭️  Skipping base module: {agc_path}")
+        print(f"SKIP base module: {agc_path}")
         continue
     try:
         with open(full_agc, 'r') as f:
@@ -297,12 +306,12 @@ for full_agc in glob.glob(os.path.join(BASE, "*/agconnect-services.json")):
         if changed:
             with open(full_agc, 'w') as f:
                 json.dump(agc, f, indent=2)
-            print(f"✅ Updated {agc_path}")
+            print(f"OK: Updated {agc_path}")
         else:
-            print(f"⚠️  No matching package in {agc_path}")
+            print(f"SKIP: No matching package in {agc_path}")
     except Exception as e:
-        print(f"⚠️  Could not parse {agc_path}: {e}")
+        print(f"SKIP: Could not parse {agc_path}: {e}")
 
 print("\n" + "="*50)
-print("✅ All patches applied!")
+print("ALL PATCHES APPLIED!")
 print("="*50 + "\n")
