@@ -12,19 +12,6 @@ def write_file(path, content):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(content)
 
-def replace_in_file(path, old, new, required=True):
-    content = read_file(path)
-    if old not in content:
-        if required:
-            print(f"❌ ERROR: Could not find pattern in {path}")
-            sys.exit(1)
-        else:
-            print(f"⚠️  SKIP: Pattern not found in {path} (optional)")
-            return
-    content = content.replace(old, new, 1)
-    write_file(path, content)
-    print(f"✅ Modified: {path}")
-
 def regex_replace_in_file(path, pattern, replacement, required=True):
     content = read_file(path)
     new_content, count = re.subn(pattern, replacement, content)
@@ -66,7 +53,9 @@ print("="*50)
 
 for gradle_path in [
     "TMessagesProj/build.gradle",
-    "TMessagesProj_AppHockeyApp/build.gradle"
+    "TMessagesProj_App/build.gradle",
+    "TMessagesProj_AppHockeyApp/build.gradle",
+    "TMessagesProj_AppHuawei/build.gradle",
 ]:
     full_path = os.path.join(BASE, gradle_path)
     if os.path.exists(full_path):
@@ -84,12 +73,24 @@ print("="*50)
 translate_controller = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java")
 if os.path.exists(translate_controller):
-    regex_replace_in_file(
-        translate_controller,
+    # چند pattern مختلف برای نسخه‌های مختلف
+    patterns = [
         r'(String\s+\w*[Ll]ang\w*\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
-        r'\1"fa"',
-        required=False
-    )
+        r'(toLang\s*=\s*)LocaleController\.getInstance\(\)\.getCurrentLocale\(\)\.getLanguage\(\)',
+        r'Locale\.getDefault\(\)\.getLanguage\(\)',
+    ]
+    found = False
+    for p in patterns:
+        content = read_file(translate_controller)
+        if re.search(p, content):
+            if 'Locale.getDefault' in p:
+                regex_replace_in_file(translate_controller, p, '"fa"', required=False)
+            else:
+                regex_replace_in_file(translate_controller, p, r'\1"fa"', required=False)
+            found = True
+            break
+    if not found:
+        print("⚠️  Could not find translation language pattern - skipping")
 else:
     print("⚠️  TranslateController.java not found - skipping")
 
@@ -166,6 +167,8 @@ if os.path.exists(profile_activity):
         content = content[:last_brace] + estimate_method + content[last_brace:]
         write_file(profile_activity, content)
         print(f"✅ Added estimateAccountCreationDate")
+    else:
+        print("⚠️  Show ID already added - skipping")
 
 print("\n" + "="*50)
 print("5. Message Timestamps with Seconds")
@@ -174,18 +177,19 @@ print("="*50)
 locale_controller = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/LocaleController.java")
 if os.path.exists(locale_controller):
-    regex_replace_in_file(
-        locale_controller,
-        r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"HH:mm"',
-        r'\1"HH:mm:ss"',
-        required=False
-    )
-    regex_replace_in_file(
-        locale_controller,
-        r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"h:mm a"',
-        r'\1"h:mm:ss a"',
-        required=False
-    )
+    found = False
+    for pattern, replacement in [
+        (r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"HH:mm"', r'\1"HH:mm:ss"'),
+        (r'(formatterDay\s*=\s*FastDateFormat\.getInstance\()"h:mm a"', r'\1"h:mm:ss a"'),
+        (r'"HH:mm"', '"HH:mm:ss"'),
+    ]:
+        content = read_file(locale_controller)
+        if re.search(pattern, content):
+            regex_replace_in_file(locale_controller, pattern, replacement, required=False)
+            found = True
+            break
+    if not found:
+        print("⚠️  Could not find time format pattern - skipping")
 
 print("\n" + "="*50)
 print("6. Hide All Chats Tab")
@@ -194,12 +198,19 @@ print("="*50)
 dialogs_activity = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java")
 if os.path.exists(dialogs_activity):
-    regex_replace_in_file(
-        dialogs_activity,
+    patterns = [
         r'(for \(int a = 0; a < filters\.size\(\); a\+\+\) \{)',
-        r'\1\n                if (filters.get(a).id == 0) continue;',
-        required=False
-    )
+        r'(for \(int i = 0; i < filters\.size\(\); i\+\+\) \{)',
+    ]
+    for p in patterns:
+        content = read_file(dialogs_activity)
+        if re.search(p, content):
+            regex_replace_in_file(
+                dialogs_activity, p,
+                r'\1\n                if (filters.get(a).id == 0) continue;',
+                required=False
+            )
+            break
 
 print("\n" + "="*50)
 print("7. Disable Jump to Next Channel")
@@ -245,26 +256,34 @@ print("\n" + "="*50)
 print("10. Fix google-services.json for custom package")
 print("="*50)
 
-for gs_path in [
+# همه مسیرهای ممکن برای google-services.json
+gs_paths = [
     "TMessagesProj/google-services.json",
     "TMessagesProj_App/google-services.json",
-]:
+    "TMessagesProj_AppHockeyApp/google-services.json",
+    "TMessagesProj_AppHuawei/google-services.json",
+]
+
+for gs_path in gs_paths:
     full_gs = os.path.join(BASE, gs_path)
     if os.path.exists(full_gs):
-        with open(full_gs, 'r') as f:
-            gs = json.load(f)
-        changed = False
-        for client in gs.get('client', []):
-            pkg = client.get('client_info', {}).get('android_client_info', {}).get('package_name', '')
-            if pkg == 'org.telegram.messenger':
-                client['client_info']['android_client_info']['package_name'] = 'org.telegram.messenger.custom'
-                changed = True
-        if changed:
-            with open(full_gs, 'w') as f:
-                json.dump(gs, f, indent=2)
-            print(f"✅ Updated {gs_path}")
-        else:
-            print(f"⚠️  No matching package found in {gs_path}")
+        try:
+            with open(full_gs, 'r') as f:
+                gs = json.load(f)
+            changed = False
+            for client in gs.get('client', []):
+                pkg = client.get('client_info', {}).get('android_client_info', {}).get('package_name', '')
+                if pkg == 'org.telegram.messenger':
+                    client['client_info']['android_client_info']['package_name'] = 'org.telegram.messenger.custom'
+                    changed = True
+            if changed:
+                with open(full_gs, 'w') as f:
+                    json.dump(gs, f, indent=2)
+                print(f"✅ Updated {gs_path}")
+            else:
+                print(f"⚠️  No matching package in {gs_path}")
+        except Exception as e:
+            print(f"⚠️  Could not parse {gs_path}: {e}")
     else:
         print(f"⚠️  {gs_path} not found - skipping")
 
