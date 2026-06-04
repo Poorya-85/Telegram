@@ -103,9 +103,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Release APK
+      - name: Build Release APK (arm64 only - afat flavor)
         run: |
-          ./gradlew assembleAfatRelease \
+          ./gradlew :TMessagesProj_App:assembleAfatRelease \
             -Pandroid.injected.signing.store.file=${{ github.workspace }}/keystore.jks \
             -Pandroid.injected.signing.store.password=${{ env.KEYSTORE_PASS }} \
             -Pandroid.injected.signing.key.alias=${{ env.KEY_ALIAS_VAL }} \
@@ -117,11 +117,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: MyTelegram-arm64-${{ github.run_number }}
-          path: TMessagesProj/build/outputs/apk/afat/release/*.apk
+          path: TMessagesProj_App/build/outputs/apk/afat/release/*.apk
           retention-days: 30
 
       - name: Done
         run: |
-          APK=$(find TMessagesProj/build/outputs/apk/afat/release/ -name "*.apk" | head -1)
-          echo "✅ Build #${{ github.run_number }} done!"
-          echo "📏 Size: $(du -sh $APK | cut -f1)"
+          APK=$(find TMessagesProj_App/build/outputs/apk/afat/release/ -name "*.apk" 2>/dev/null | head -1)
+          if [ -n "$APK" ]; then
+            echo "✅ Build #${{ github.run_number }} done!"
+            echo "📏 Size: $(du -sh $APK | cut -f1)"
+          else
+            echo "⚠️ APK not found in expected path, searching..."
+            find . -name "*.apk" -path "*/afat/release/*" 2>/dev/null
+          fi
