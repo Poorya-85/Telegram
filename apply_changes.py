@@ -245,11 +245,19 @@ if os.path.exists(media_data):
     )
 
 print("\n" + "="*50)
-print("10. Fix google-services.json for custom package")
+print("10. Fix google-services.json (only App modules, not base)")
 print("="*50)
 
+# فقط module هایی که _App دارن آپدیت میشن، نه TMessagesProj اصلی
 for full_gs in glob.glob(os.path.join(BASE, "*/google-services.json")):
     gs_path = os.path.relpath(full_gs, BASE)
+    module_name = gs_path.split('/')[0]
+
+    # TMessagesProj اصلی رو skip کن
+    if module_name == "TMessagesProj":
+        print(f"⏭️  Skipping base module: {gs_path}")
+        continue
+
     try:
         with open(full_gs, 'r') as f:
             gs = json.load(f)
@@ -274,6 +282,10 @@ print("="*50)
 
 for full_agc in glob.glob(os.path.join(BASE, "*/agconnect-services.json")):
     agc_path = os.path.relpath(full_agc, BASE)
+    module_name = agc_path.split('/')[0]
+    if module_name == "TMessagesProj":
+        print(f"⏭️  Skipping base module: {agc_path}")
+        continue
     try:
         with open(full_agc, 'r') as f:
             agc = json.load(f)
