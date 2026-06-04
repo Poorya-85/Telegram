@@ -100,16 +100,39 @@ jobs:
       - name: Apply all customizations
         run: python3 apply_changes.py
 
+      - name: Disable standalone flavor in TMessagesProj
+        run: |
+          # این flavor باعث trigger شدن processReleaseGoogleServices میشه
+          # با حذف آن از settings.gradle جلوگیری میکنیم
+          python3 - << 'EOF'
+          import re, os
+
+          # پیدا کردن و غیرفعال کردن standalone flavor
+          build_gradle = "TMessagesProj/build.gradle"
+          if os.path.exists(build_gradle):
+              content = open(build_gradle).read()
+              # حذف standalone از productFlavors
+              content = re.sub(
+                  r'\s*standalone\s*\{[^}]*\}',
+                  '',
+                  content
+              )
+              open(build_gradle, 'w').write(content)
+              print("✅ Removed standalone flavor from TMessagesProj/build.gradle")
+          EOF
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Release APK (arm64 only - afat flavor)
+      - name: Build Release APK (arm64 only)
         run: |
           ./gradlew :TMessagesProj_App:assembleAfatRelease \
             -Pandroid.injected.signing.store.file=${{ github.workspace }}/keystore.jks \
             -Pandroid.injected.signing.store.password=${{ env.KEYSTORE_PASS }} \
             -Pandroid.injected.signing.key.alias=${{ env.KEY_ALIAS_VAL }} \
-            -Pandroid.injected.signing.key.password=${{ env.KEY_PASS }}
+            -Pandroid.injected.signing.key.password=${{ env.KEY_PASS }} \
+            --exclude-task :TMessagesProj:processReleaseGoogleServices \
+            --exclude-task :TMessagesProj:processStandaloneReleaseGoogleServices
         env:
           JAVA_OPTS: "-Xmx4g"
 
@@ -127,6 +150,6 @@ jobs:
             echo "✅ Build #${{ github.run_number }} done!"
             echo "📏 Size: $(du -sh $APK | cut -f1)"
           else
-            echo "⚠️ APK not found in expected path, searching..."
-            find . -name "*.apk" -path "*/afat/release/*" 2>/dev/null
+            echo "⚠️ APK not found, searching everywhere..."
+            find . -name "*.apk" 2>/dev/null
           fi
