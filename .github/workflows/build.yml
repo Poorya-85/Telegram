@@ -41,14 +41,14 @@ jobs:
         run: |
           KEYSTORE_B64="${{ secrets.KEYSTORE_BASE64 }}"
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "✅ Using existing keystore"
+            echo "Using existing keystore"
             echo "$KEYSTORE_B64" | base64 -d > keystore.jks
             echo "KEYSTORE_PASS=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS_VAL=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASS=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
             echo "KEYSTORE_IS_NEW=false" >> $GITHUB_ENV
           else
-            echo "⚠️ Generating new keystore..."
+            echo "Generating new keystore..."
             keytool -genkey -v \
               -keystore keystore.jks \
               -alias mytelegram \
@@ -78,6 +78,7 @@ jobs:
           pip install Pillow -q
           python3 - << 'EOF'
           from PIL import Image
+          import os, glob
 
           src = "icons/ic_launcher.png"
           img = Image.open(src).convert("RGBA")
@@ -93,22 +94,26 @@ jobs:
           base = "TMessagesProj/src/main/res"
           for folder, size in sizes.items():
               resized = img.resize((size, size), Image.LANCZOS)
-              resized.save(f"{base}/{folder}/ic_launcher.png", "PNG")
+              out_path = f"{base}/{folder}/ic_launcher.png"
+              resized.save(out_path, "PNG")
+              # ic_launcher_round هم همین آیکون باشه
+              resized.save(f"{base}/{folder}/ic_launcher_round.png", "PNG")
               print(f"OK {folder}: {size}x{size}")
-          EOF
 
-      - name: Debug source files
-        run: |
-          echo "=== ProfileActivity menu items ==="
-          grep -n "edit\|otherItem\|addSubItem\|MenuId\|menu_id" TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java | head -40
-          echo "=== TranslateController language ==="
-          grep -n "language\|locale\|toLang\|getLanguage\|Locale" TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java | head -40
-          echo "=== DialogsActivity filters loop ==="
-          grep -n "filters\|for.*size\|DialogFilter" TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java | head -40
-          echo "=== ChatActivity jump ==="
-          grep -n "jump\|Jump\|nextChannel\|NextChannel" TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java | head -20
-          echo "=== MediaDataController sticker ==="
-          grep -n "sticker\|MAX_STICKER\|greeting\|Greeting" TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java | head -40
+          # پیدا کردن و حذف adaptive icon XMLها که آیکون رو override میکنن
+          for xml_file in glob.glob("TMessagesProj/src/main/res/mipmap-*/ic_launcher.xml"):
+              os.remove(xml_file)
+              print(f"Removed override XML: {xml_file}")
+          for xml_file in glob.glob("TMessagesProj/src/main/res/mipmap-*/ic_launcher_round.xml"):
+              os.remove(xml_file)
+              print(f"Removed override XML: {xml_file}")
+
+          # drawable هم کپی کن
+          for drawable_dir in glob.glob("TMessagesProj/src/main/res/drawable*/"):
+              if os.path.exists(f"{drawable_dir}ic_launcher.png"):
+                  img.resize((192, 192), Image.LANCZOS).save(f"{drawable_dir}ic_launcher.png", "PNG")
+                  print(f"OK drawable: {drawable_dir}")
+          EOF
 
       - name: Apply all customizations
         run: python3 apply_changes.py
