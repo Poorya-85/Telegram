@@ -92,29 +92,31 @@ profile_activity = os.path.join(BASE,
 if os.path.exists(profile_activity):
     content = read_file(profile_activity)
     if "show_id" not in content:
+
         # اضافه کردن constant
-        regex_replace_in_file(
-            profile_activity,
+        content = re.sub(
             r'(private final static int edit_avatar\s*=\s*\d+;)',
-            r'\1\n    private final static int show_id = 9999;',
-            required=False
+            r'\1' + '\n    private final static int show_id = 9999;',
+            content
         )
+
         # اضافه کردن به منو
-        regex_replace_in_file(
-            profile_activity,
+        content = re.sub(
             r'(otherItem\.showSubItem\(gallery_menu_save\);)',
-            r'\1\n                    otherItem.addSubItem(show_id, "Show ID");',
-            required=False
+            r'\1' + '\n                    otherItem.addSubItem(show_id, "Show ID");',
+            content
         )
-        # هندل کردن کلیک - توجه: همه \n باید \\n باشن
-        show_id_handler = (
+
+        # هندل کلیک - setMessage با concat به جای \n
+        show_id_code = (
             '} else if (id == show_id) {\n'
             '                long uid = userId;\n'
             '                String createdDate = estimateAccountCreationDate(uid);\n'
+            '                String msg = "ID: " + uid + "\\n\\nAccount created approximately:\\n" + createdDate;\n'
             '                androidx.appcompat.app.AlertDialog.Builder builder =\n'
             '                    new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());\n'
             '                builder.setTitle("User ID");\n'
-            '                builder.setMessage("ID: " + uid + "\\n\\nAccount created approximately:\\n" + createdDate);\n'
+            '                builder.setMessage(msg);\n'
             '                builder.setPositiveButton("Copy ID", (dialog, which) -> {\n'
             '                    android.content.ClipboardManager clipboard =\n'
             '                        (android.content.ClipboardManager) getParentActivity()\n'
@@ -127,12 +129,13 @@ if os.path.exists(profile_activity):
             '                });\n'
             '                builder.setNegativeButton("Close", null);\n'
             '                showDialog(builder.create());\n'
+            '            '
         )
-        regex_replace_in_file(
-            profile_activity,
+
+        content = re.sub(
             r'(} else if \(id == edit_avatar\) \{)',
-            show_id_handler + r'\1',
-            required=False
+            show_id_code + r'\1',
+            content
         )
 
         estimate_method = (
@@ -157,7 +160,7 @@ if os.path.exists(profile_activity):
             '        return months[month - 1] + " " + year;\n'
             '    }\n'
         )
-        content = read_file(profile_activity)
+
         last_brace = content.rfind('}')
         content = content[:last_brace] + estimate_method + content[last_brace:]
         write_file(profile_activity, content)
