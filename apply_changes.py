@@ -67,14 +67,12 @@ print("="*50)
 translate_controller = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/TranslateController.java")
 if os.path.exists(translate_controller):
-    # در نسخه جدید از pluralLangCode استفاده میکنه
     regex_replace_in_file(
         translate_controller,
         r'LocaleController\.getInstance\(\)\.getCurrentLocaleInfo\(\)\.pluralLangCode',
         '"fa"',
         required=False
     )
-    # fallback های دیگه
     regex_replace_in_file(
         translate_controller,
         r'Resources\.getSystem\(\)\.getConfiguration\(\)\.locale\.getLanguage\(\)',
@@ -93,75 +91,77 @@ profile_activity = os.path.join(BASE,
 
 if os.path.exists(profile_activity):
     content = read_file(profile_activity)
-    if "SHOW_ID_MENU_ITEM" not in content:
-        # اضافه کردن constant بعد از آخرین edit_ constant
+    if "show_id" not in content:
+        # اضافه کردن constant
         regex_replace_in_file(
             profile_activity,
             r'(private final static int edit_avatar\s*=\s*\d+;)',
             r'\1\n    private final static int show_id = 9999;',
             required=False
         )
-        # اضافه کردن به منوی otherItem - بعد از اولین showSubItem
+        # اضافه کردن به منو
         regex_replace_in_file(
             profile_activity,
             r'(otherItem\.showSubItem\(gallery_menu_save\);)',
             r'\1\n                    otherItem.addSubItem(show_id, "Show ID");',
             required=False
         )
-        # هندل کردن کلیک - بعد از آخرین else if مربوط به edit
-        show_id_handler = '''} else if (id == show_id) {
-                long uid = userId;
-                String createdDate = estimateAccountCreationDate(uid);
-                androidx.appcompat.app.AlertDialog.Builder builder =
-                    new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());
-                builder.setTitle("User ID");
-                builder.setMessage("ID: " + uid + "\\n\\nAccount created approximately:\\n" + createdDate);
-                builder.setPositiveButton("Copy ID", (dialog, which) -> {
-                    android.content.ClipboardManager clipboard =
-                        (android.content.ClipboardManager) getParentActivity()
-                        .getSystemService(android.content.Context.CLIPBOARD_SERVICE);
-                    android.content.ClipData clip =
-                        android.content.ClipData.newPlainText("ID", String.valueOf(uid));
-                    clipboard.setPrimaryClip(clip);
-                    android.widget.Toast.makeText(getParentActivity(),
-                        "ID copied!", android.widget.Toast.LENGTH_SHORT).show();
-                });
-                builder.setNegativeButton("Close", null);
-                showDialog(builder.create());'''
-
+        # هندل کردن کلیک - توجه: همه \n باید \\n باشن
+        show_id_handler = (
+            '} else if (id == show_id) {\n'
+            '                long uid = userId;\n'
+            '                String createdDate = estimateAccountCreationDate(uid);\n'
+            '                androidx.appcompat.app.AlertDialog.Builder builder =\n'
+            '                    new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());\n'
+            '                builder.setTitle("User ID");\n'
+            '                builder.setMessage("ID: " + uid + "\\n\\nAccount created approximately:\\n" + createdDate);\n'
+            '                builder.setPositiveButton("Copy ID", (dialog, which) -> {\n'
+            '                    android.content.ClipboardManager clipboard =\n'
+            '                        (android.content.ClipboardManager) getParentActivity()\n'
+            '                        .getSystemService(android.content.Context.CLIPBOARD_SERVICE);\n'
+            '                    android.content.ClipData clip =\n'
+            '                        android.content.ClipData.newPlainText("ID", String.valueOf(uid));\n'
+            '                    clipboard.setPrimaryClip(clip);\n'
+            '                    android.widget.Toast.makeText(getParentActivity(),\n'
+            '                        "ID copied!", android.widget.Toast.LENGTH_SHORT).show();\n'
+            '                });\n'
+            '                builder.setNegativeButton("Close", null);\n'
+            '                showDialog(builder.create());\n'
+        )
         regex_replace_in_file(
             profile_activity,
             r'(} else if \(id == edit_avatar\) \{)',
-            show_id_handler + r'\n            \1',
+            show_id_handler + r'\1',
             required=False
         )
 
-        estimate_method = '''
-    private String estimateAccountCreationDate(long userId) {
-        long[][] milestones = {
-            {1L, 2013, 1}, {100000L, 2013, 6}, {1000000L, 2014, 1},
-            {10000000L, 2014, 9}, {100000000L, 2016, 3}, {500000000L, 2019, 1},
-            {1000000000L, 2020, 6}, {1500000000L, 2021, 7}, {2000000000L, 2022, 6},
-            {5000000000L, 2023, 6}, {7000000000L, 2024, 1},
-        };
-        int year = 2024, month = 1;
-        for (int i = milestones.length - 1; i >= 0; i--) {
-            if (userId >= milestones[i][0]) {
-                year = (int) milestones[i][1];
-                month = (int) milestones[i][2];
-                break;
-            }
-        }
-        String[] months = {"January","February","March","April","May","June",
-                           "July","August","September","October","November","December"};
-        return months[month - 1] + " " + year;
-    }
-'''
+        estimate_method = (
+            '\n'
+            '    private String estimateAccountCreationDate(long userId) {\n'
+            '        long[][] milestones = {\n'
+            '            {1L, 2013, 1}, {100000L, 2013, 6}, {1000000L, 2014, 1},\n'
+            '            {10000000L, 2014, 9}, {100000000L, 2016, 3}, {500000000L, 2019, 1},\n'
+            '            {1000000000L, 2020, 6}, {1500000000L, 2021, 7}, {2000000000L, 2022, 6},\n'
+            '            {5000000000L, 2023, 6}, {7000000000L, 2024, 1},\n'
+            '        };\n'
+            '        int year = 2024, month = 1;\n'
+            '        for (int i = milestones.length - 1; i >= 0; i--) {\n'
+            '            if (userId >= milestones[i][0]) {\n'
+            '                year = (int) milestones[i][1];\n'
+            '                month = (int) milestones[i][2];\n'
+            '                break;\n'
+            '            }\n'
+            '        }\n'
+            '        String[] months = {"January","February","March","April","May","June",\n'
+            '                           "July","August","September","October","November","December"};\n'
+            '        return months[month - 1] + " " + year;\n'
+            '    }\n'
+        )
         content = read_file(profile_activity)
         last_brace = content.rfind('}')
         content = content[:last_brace] + estimate_method + content[last_brace:]
         write_file(profile_activity, content)
-        print("OK: Added Show ID and estimateAccountCreationDate")
+        print("OK: Added Show ID")
     else:
         print("SKIP: Show ID already added")
 
@@ -192,8 +192,6 @@ print("="*50)
 dialogs_activity = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java")
 if os.path.exists(dialogs_activity):
-    # در نسخه جدید از getDialogFilters() استفاده میکنه
-    # All Chats تب اول با id=0 هست - وقتی position==0 باشه skip میکنیم
     regex_replace_in_file(
         dialogs_activity,
         r'(ArrayList<MessagesController\.DialogFilter> dialogFilters = getMessagesController\(\)\.getDialogFilters\(\);)',
@@ -208,7 +206,6 @@ print("="*50)
 chat_activity = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java")
 if os.path.exists(chat_activity):
-    # nextChannels رو خالی نگه دار
     regex_replace_in_file(
         chat_activity,
         r'(public void setNextChannels\(ArrayList<TLRPC\.Chat> channels\) \{)\s*\n\s*nextChannels = channels;',
@@ -223,18 +220,10 @@ print("="*50)
 media_data = os.path.join(BASE,
     "TMessagesProj/src/main/java/org/telegram/messenger/MediaDataController.java")
 if os.path.exists(media_data):
-    # sticker sets limit
     regex_replace_in_file(
         media_data,
         r'(stickerSets\[\d+\]\.size\(\)\s*>=?\s*)200',
         r'\1200',
-        required=False
-    )
-    # حداکثر تعداد sticker در یه set
-    regex_replace_in_file(
-        media_data,
-        r'\.size\(\)\s*<\s*200\b',
-        '.size() < 200',
         required=False
     )
 
@@ -243,17 +232,10 @@ print("9. Disable Greeting Sticker")
 print("="*50)
 
 if os.path.exists(media_data):
-    # greetingsSticker رو همیشه null نگه دار
     regex_replace_in_file(
         media_data,
-        r'(private TLRPC\.Document greetingsSticker;)',
-        r'\1 // greeting sticker disabled',
-        required=False
-    )
-    regex_replace_in_file(
-        media_data,
-        r'(greetingsSticker\s*=\s*)(?!null)',
-        r'\1null; // disabled // was: ',
+        r'(greetingsSticker\s*=\s*)(?!null)[^;]+;',
+        r'\1null; // disabled',
         required=False
     )
 
