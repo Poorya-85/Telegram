@@ -27,6 +27,19 @@ def regex_replace_in_file(path, pattern, replacement, required=True, flags=0):
     write_file(path, new_content)
     print(f"OK: Modified {path} ({count} replacements)")
 
+def simple_replace(path, old, new, required=True):
+    content = read_file(path)
+    if old not in content:
+        if required:
+            print(f"ERROR: Pattern not found in {path}")
+            sys.exit(1)
+        else:
+            print(f"SKIP: Pattern not found in {path} (optional)")
+            return
+    content = content.replace(old, new, 1)
+    write_file(path, content)
+    print(f"OK: Modified {path}")
+
 BASE = os.getcwd()
 
 print("\n" + "="*50)
@@ -93,51 +106,62 @@ if os.path.exists(profile_activity):
     content = read_file(profile_activity)
     if "show_id" not in content:
 
-        # اضافه کردن constant
-        content = re.sub(
-            r'(private final static int edit_avatar\s*=\s*\d+;)',
-            r'\1' + '\n    private final static int show_id = 9999;',
-            content
-        )
+        # پیدا کردن anchor برای constant
+        anchor_const = re.search(r'private final static int edit_avatar\s*=\s*\d+;', content)
+        if anchor_const:
+            insert_pos = anchor_const.end()
+            content = content[:insert_pos] + '\n    private final static int show_id = 9999;' + content[insert_pos:]
+            print("OK: Added show_id constant")
+        else:
+            print("SKIP: Could not find edit_avatar constant")
 
-        # اضافه کردن به منو
-        content = re.sub(
-            r'(otherItem\.showSubItem\(gallery_menu_save\);)',
-            r'\1' + '\n                    otherItem.addSubItem(show_id, "Show ID");',
-            content
-        )
+        # پیدا کردن anchor برای منو
+        anchor_menu = 'otherItem.showSubItem(gallery_menu_save);'
+        if anchor_menu in content:
+            content = content.replace(
+                anchor_menu,
+                anchor_menu + '\n                    otherItem.addSubItem(show_id, "Show ID");',
+                1
+            )
+            print("OK: Added Show ID menu item")
+        else:
+            print("SKIP: Could not find gallery_menu_save anchor")
 
-        # هندل کلیک - setMessage با concat به جای \n
-        show_id_code = (
-            '} else if (id == show_id) {\n'
-            '                long uid = userId;\n'
-            '                String createdDate = estimateAccountCreationDate(uid);\n'
-            '                String msg = "ID: " + uid + "\\n\\nAccount created approximately:\\n" + createdDate;\n'
-            '                androidx.appcompat.app.AlertDialog.Builder builder =\n'
-            '                    new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());\n'
-            '                builder.setTitle("User ID");\n'
-            '                builder.setMessage(msg);\n'
-            '                builder.setPositiveButton("Copy ID", (dialog, which) -> {\n'
-            '                    android.content.ClipboardManager clipboard =\n'
-            '                        (android.content.ClipboardManager) getParentActivity()\n'
-            '                        .getSystemService(android.content.Context.CLIPBOARD_SERVICE);\n'
-            '                    android.content.ClipData clip =\n'
-            '                        android.content.ClipData.newPlainText("ID", String.valueOf(uid));\n'
-            '                    clipboard.setPrimaryClip(clip);\n'
-            '                    android.widget.Toast.makeText(getParentActivity(),\n'
-            '                        "ID copied!", android.widget.Toast.LENGTH_SHORT).show();\n'
-            '                });\n'
-            '                builder.setNegativeButton("Close", null);\n'
-            '                showDialog(builder.create());\n'
-            '            '
-        )
+        # پیدا کردن anchor برای handler
+        anchor_handler = '} else if (id == edit_avatar) {'
+        if anchor_handler in content:
+            # کد Java رو به صورت literal string میسازیم
+            # \n در Java string باید به صورت \\n نوشته بشه
+            java_newline = '\\n'
+            show_id_block = (
+                '} else if (id == show_id) {\n'
+                '                long uid = userId;\n'
+                '                String createdDate = estimateAccountCreationDate(uid);\n'
+                '                String msg = "ID: " + uid + "' + java_newline + java_newline + 'Account created approximately:' + java_newline + '" + createdDate;\n'
+                '                androidx.appcompat.app.AlertDialog.Builder builder =\n'
+                '                    new androidx.appcompat.app.AlertDialog.Builder(getParentActivity());\n'
+                '                builder.setTitle("User ID");\n'
+                '                builder.setMessage(msg);\n'
+                '                builder.setPositiveButton("Copy ID", (dialog, which) -> {\n'
+                '                    android.content.ClipboardManager clipboard =\n'
+                '                        (android.content.ClipboardManager) getParentActivity()\n'
+                '                        .getSystemService(android.content.Context.CLIPBOARD_SERVICE);\n'
+                '                    android.content.ClipData clip =\n'
+                '                        android.content.ClipData.newPlainText("ID", String.valueOf(uid));\n'
+                '                    clipboard.setPrimaryClip(clip);\n'
+                '                    android.widget.Toast.makeText(getParentActivity(),\n'
+                '                        "ID copied!", android.widget.Toast.LENGTH_SHORT).show();\n'
+                '                });\n'
+                '                builder.setNegativeButton("Close", null);\n'
+                '                showDialog(builder.create());\n'
+                '            ' + anchor_handler
+            )
+            content = content.replace(anchor_handler, show_id_block, 1)
+            print("OK: Added Show ID handler")
+        else:
+            print("SKIP: Could not find edit_avatar handler")
 
-        content = re.sub(
-            r'(} else if \(id == edit_avatar\) \{)',
-            show_id_code + r'\1',
-            content
-        )
-
+        # اضافه کردن متد estimateAccountCreationDate
         estimate_method = (
             '\n'
             '    private String estimateAccountCreationDate(long userId) {\n'
@@ -160,11 +184,10 @@ if os.path.exists(profile_activity):
             '        return months[month - 1] + " " + year;\n'
             '    }\n'
         )
-
         last_brace = content.rfind('}')
         content = content[:last_brace] + estimate_method + content[last_brace:]
         write_file(profile_activity, content)
-        print("OK: Added Show ID")
+        print("OK: Show ID fully added")
     else:
         print("SKIP: Show ID already added")
 
